@@ -3,6 +3,8 @@
   <component name="DesignSurface">
     <option name="filePathToZoomLevelMap">
       <map>
+        <entry key="..\:/AndroidProjects/GarnitureTest/app/src/main/res/layout/activity_main.xml" value="0.30364583333333334" />
+        <entry key="..\:/AndroidProjects/GarnitureTest/app/src/main/res/layout/item_rv.xml" value="0.30364583333333334" />
         <entry key="..\:/Users/mrpal/AndroidStudioProjects/GarnitureTest/app/src/main/res/layout/activity_main.xml" value="0.28940217391304346" />
         <entry key="..\:/Users/mrpal/AndroidStudioProjects/GarnitureTest/app/src/main/res/layout/item_rv.xml" value="0.19427083333333334" />
       </map>

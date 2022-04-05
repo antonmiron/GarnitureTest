@@ -15,6 +15,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.garnituretest.databinding.ActivityMainBinding
+import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
@@ -44,7 +45,10 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
 
-
+        val x: Short = Short.MAX_VALUE.dec()
+        Log.d("ANTON", "x: $x")
+        val w = x.inc().inc()
+        Log.d("ANTON", "w: $w")
         prepareUI()
     }
 
@@ -82,10 +86,21 @@ class MainActivity : AppCompatActivity() {
                 job?.cancel()
                 job = lifecycleScope.launch {
                     tvStatus.text = "PLAY"
-                    playAudio()
+                  //  playAudio()
+                    playNewAudio()
                     tvStatus.text = "STOP"
                 }
             }
+
+            /**PLAY NEW**/
+//            btnPlayNew.setOnClickListener {
+//                job?.cancel()
+//                job = lifecycleScope.launch {
+//                    tvStatus.text = "PLAY"
+//                    playNewAudio()
+//                    tvStatus.text = "STOP"
+//                }
+//            }
         }
     }
 
@@ -104,10 +119,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun playAudio() = withContext(Dispatchers.IO){
+        Log.d("ANTON", "playAudio max: ${buffer.maxOrNull()}")
+
         audioTrack.play()
         audioTrack.write(buffer, 0, offset)
     }
 
+    private suspend fun playNewAudio() = withContext(Dispatchers.IO){
+        val newBuffer = increaseVolume()
+
+        Log.d("ANTON", "playNewAudio max = ${newBuffer.maxOrNull()}")
+
+        audioTrack.play()
+        audioTrack.write(newBuffer, 0, offset)
+    }
+
+
+    private fun increaseVolume(): ShortArray{
+        val increaseValue = seekBar.progress + 1 //bcs start from 0
+        Log.d("ANTON", "increaseValue: $increaseValue")
+        return buffer.map {
+            Math.min(it * increaseValue, Short.MAX_VALUE.toInt()).toShort()
+        }.toTypedArray().toShortArray()
+    }
 
 
 
