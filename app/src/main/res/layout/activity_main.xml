@@ -59,5 +59,15 @@
         app:layout_constraintStart_toStartOf="parent"
         tools:layout_editor_absoluteY="470dp" />
 
+    <Switch
+        android:id="@+id/switchAudio"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Use noise reduction"
+        android:layout_marginTop="36dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/seekBar" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

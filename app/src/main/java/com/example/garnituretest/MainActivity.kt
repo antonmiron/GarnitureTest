@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private suspend fun recAudio() = withContext(Dispatchers.IO){
-        if(audioRecord == null) audioRecord = createAudioRecord()
+        audioRecord = createAudioRecord()
 
         audioRecord?.startRecording()
 
@@ -149,8 +149,13 @@ class MainActivity : AppCompatActivity() {
     private fun createAudioRecord(): AudioRecord{
         val minBufferSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
 
+        val source = if(switchAudio.isChecked) MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        else MediaRecorder.AudioSource.MIC
+
+        Log.d("ANTON", "source: $source")
+
         return AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            source,
             8000,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
