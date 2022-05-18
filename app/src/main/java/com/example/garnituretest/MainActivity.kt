@@ -6,10 +6,13 @@ import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.*
+import android.media.audiofx.DynamicsProcessing
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
+import android.widget.SeekBar
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
@@ -17,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.garnituretest.databinding.ActivityMainBinding
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
+import java.lang.Math.log10
 
 class MainActivity : AppCompatActivity() {
     private var micPermissionGranted = false
@@ -32,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private val minBufferSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
     private var audioRecord: AudioRecord? = null
     private val audioTrack = createAudioTrack()
+    val le = LoudnessEnhancer(audioTrack.audioSessionId).apply { enabled = true }
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,21 +91,31 @@ class MainActivity : AppCompatActivity() {
                 job?.cancel()
                 job = lifecycleScope.launch {
                     tvStatus.text = "PLAY"
-                  //  playAudio()
-                    playNewAudio()
+                    playChangedAudio()
+//                    playAudio()
                     tvStatus.text = "STOP"
                 }
             }
 
-            /**PLAY NEW**/
-//            btnPlayNew.setOnClickListener {
-//                job?.cancel()
-//                job = lifecycleScope.launch {
-//                    tvStatus.text = "PLAY"
-//                    playNewAudio()
-//                    tvStatus.text = "STOP"
-//                }
-//            }
+            /**Change volume**/
+            seekBar.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar?,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+//                    var p = (progress+1)/5.0f
+//                    if(p<=0.4) p = 0.01f
+                    var p = progress*2000
+                    Log.d("ANTON", "progress: $progress, p: $p")
+                    le.setTargetGain(p)
+
+
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
         }
     }
 
@@ -119,28 +134,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun playAudio() = withContext(Dispatchers.IO){
-        Log.d("ANTON", "playAudio max: ${buffer.maxOrNull()}")
+        Log.d("ANTON", "playAudio max amplitude: ${buffer.maxOrNull()}")
 
         audioTrack.play()
         audioTrack.write(buffer, 0, offset)
     }
 
-    private suspend fun playNewAudio() = withContext(Dispatchers.IO){
-        val newBuffer = increaseVolume()
-
-        Log.d("ANTON", "playNewAudio max = ${newBuffer.maxOrNull()}")
+    private suspend fun playChangedAudio() = withContext(Dispatchers.IO){
 
         audioTrack.play()
-        audioTrack.write(newBuffer, 0, offset)
-    }
-
-
-    private fun increaseVolume(): ShortArray{
-        val increaseValue = seekBar.progress + 1 //bcs start from 0
-        Log.d("ANTON", "increaseValue: $increaseValue")
-        return buffer.map {
-            Math.min(it * increaseValue, Short.MAX_VALUE.toInt()).toShort()
-        }.toTypedArray().toShortArray()
+        audioTrack.write(buffer, 0, offset)
     }
 
 
