@@ -15,6 +15,8 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.garnituretest.databinding.ActivityMainBinding
+import com.theeasiestway.opus.Constants
+import com.theeasiestway.opus.Opus
 import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
@@ -32,6 +34,12 @@ class MainActivity : AppCompatActivity() {
     private var audioRecord: AudioRecord? = null
     private val audioTrack = createAudioTrack()
 
+    val SAMPLE_RATE = Constants.SampleRate._48000()       // samlpe rate of the input audio
+    val CHANNELS = Constants.Channels.stereo()            // type of the input audio mono or stereo
+    val APPLICATION = Constants.Application.audio()       // coding mode of the encoder
+    var FRAME_SIZE = Constants.FrameSize._120()           // default frame size for 48000Hz
+
+    val codec = Opus()                                    // getting an instance of Codec
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +54,9 @@ class MainActivity : AppCompatActivity() {
 
 
         prepareUI()
+
+        codec.encoderInit(SAMPLE_RATE, CHANNELS, APPLICATION) // init encoder
+        codec.decoderInit(SAMPLE_RATE, CHANNELS)              // init decoder
     }
 
 
@@ -89,7 +100,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
+    private fun addInBuffer(shortArray: ShortArray, offset: Int){
+        for(index in offset until offset+shortArray.size){
+            buffer[index] = shortArray[index-offset]
+        }
+    }
 
     private suspend fun recAudio() = withContext(Dispatchers.IO){
         if(audioRecord == null) audioRecord = createAudioRecord()
@@ -99,13 +114,19 @@ class MainActivity : AppCompatActivity() {
         offset = 0
 
         while (isActive && offset < buffer.size) {
-            offset += audioRecord?.read(buffer, offset, 160)?:0
+            val localBuffer = ShortArray(512)
+            offset += audioRecord?.read(localBuffer, 0, 512)?:0
+
+            val encoded = codec.encode(localBuffer, FRAME_SIZE)?:return@withContext
+            addInBuffer(encoded, offset)
         }
     }
 
     private suspend fun playAudio() = withContext(Dispatchers.IO){
         audioTrack.play()
-        audioTrack.write(buffer, 0, offset)
+
+        val localBuffer = codec.decode(buffer, FRAME_SIZE)?:return@withContext
+        audioTrack.write(localBuffer, 0, offset)
     }
 
 
