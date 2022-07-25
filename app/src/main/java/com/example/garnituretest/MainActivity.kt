@@ -2,10 +2,17 @@ package com.example.garnituretest
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.*
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -16,6 +23,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.garnituretest.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
+import java.lang.IllegalStateException
+import java.util.concurrent.CancellationException
 
 class MainActivity : AppCompatActivity() {
     private var micPermissionGranted = false
@@ -30,39 +39,14 @@ class MainActivity : AppCompatActivity() {
 
     private val minBufferSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
     private var audioRecord: AudioRecord? = null
-    private val audioTrack = createAudioTrack()
-    private lateinit var broadcast: Broadcast
+    private var audioTrack: AudioTrack? = null
     private val audioManager: AudioManager by lazy{ getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    private val adapter = Adapter()
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
-
-        broadcast = Broadcast(audioManager){
-            val status = when(it){
-                -1 -> "ERROR"
-                0 -> "DISCONNECTED"
-                1 -> {
-                    job = lifecycleScope.launch {
-                        viewBinding.tvStatus.text = "REC"
-                        recAudio()
-                        viewBinding.tvStatus.text = "STOP"
-                    }
-
-                    "CONNECT"
-                }
-                2 -> "CONNECTING"
-                else -> "UNDEFINED - $it"
-            }
-
-            adapter.addItem("BLT_SCO: $status")
-
-
-        }
-        registerReceiver(broadcast, IntentFilter().apply { addAction(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED) })
 
         micPermissionGranted = ContextCompat.checkSelfPermission(
             this,
@@ -71,18 +55,11 @@ class MainActivity : AppCompatActivity() {
 
 
         prepareUI()
-
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-        devices.forEach {
-            Log.d("VVV", "it.type: ${it.type}, it.name: ${it.productName}")
-        }
-
     }
 
 
     private fun prepareUI(){
         with(viewBinding){
-            rvBluetoothState.adapter = adapter
 
             /**REC**/
             btnRec.setOnClickListener {
@@ -93,19 +70,24 @@ class MainActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                audioManager.isBluetoothScoOn = true
                 audioManager.startBluetoothSco()
 
-                adapter.addItem("audioManager.isBluetoothScoOn: ${audioManager.isBluetoothScoOn}")
-                Log.d("VVV","audioManager.isBluetoothScoOn: ${audioManager.isBluetoothScoOn}")
+                job = lifecycleScope.launch {
+                    viewBinding.tvStatus.text = "RECORDING"
+                    recAudio()
+                    viewBinding.tvStatus.text = "STOPPED"
+                }
+
+                Log.d("ANTON","audioManager.isBluetoothScoOn: ${audioManager.isBluetoothScoOn}")
             }
 
             /**STOP**/
             btnStop.setOnClickListener {
-                audioRecord?.stop()
-                audioTrack.stop()
+                try {
+                    audioRecord?.stop()
+                    audioTrack?.stop()
+                } catch (ex: IllegalStateException){}
 
-                audioManager.isBluetoothScoOn = false
                 audioManager.stopBluetoothSco()
 
                 job?.cancel()
@@ -129,20 +111,30 @@ class MainActivity : AppCompatActivity() {
 
 
     private suspend fun recAudio() = withContext(Dispatchers.IO){
-        if(audioRecord == null) audioRecord = createAudioRecord()
+        try {
+            audioRecord = createAudioRecord()
 
-        audioRecord?.startRecording()
+            audioRecord?.startRecording()
+            Log.d("ANTON", "audioRecord: $audioRecord")
 
-        offset = 0
-
-        while (isActive && offset < buffer.size) {
-            offset += audioRecord?.read(buffer, offset, 160)?:0
+            offset = 0
+            while (isActive && offset < buffer.size) {
+                offset += audioRecord?.read(buffer, offset, 160)?:0
+            }
         }
+        catch (ex: CancellationException){ }
+        finally { audioRecord?.release() }
     }
 
     private suspend fun playAudio() = withContext(Dispatchers.IO){
-        audioTrack.play()
-        audioTrack.write(buffer, 0, offset)
+        try {
+            audioTrack = createAudioTrack()
+            Log.d("ANTON", "audioTrack: $audioTrack")
+            audioTrack?.play()
+            audioTrack?.write(buffer, 0, offset)
+        }
+        catch (ex: CancellationException){ }
+        finally { audioTrack?.release() }
     }
 
 
@@ -153,7 +145,7 @@ class MainActivity : AppCompatActivity() {
         val minBufferSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
 
         return AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.MIC,
             8000,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
