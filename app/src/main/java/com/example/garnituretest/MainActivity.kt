@@ -6,9 +6,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.*
 import android.content.pm.PackageManager
 import android.media.*
 import android.media.audiofx.AcousticEchoCanceler
@@ -22,6 +20,7 @@ import android.os.ResultReceiver
 import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import android.view.KeyEvent
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
@@ -52,13 +51,16 @@ class MainActivity : AppCompatActivity() {
     private var audioTrack: AudioTrack? = null
     private val audioManager: AudioManager by lazy{ getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
+    private val adapter = Adapter()
+
     private val mediaSessionCallback: MediaSession.Callback = object: MediaSession.Callback() {
         override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
 
             val mediaButtonAction = mediaButtonIntent.action
             val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-            Log.d("ANTON", "action: $mediaButtonAction")
-            Log.d("ANTON", "key event: $event")
+
+            adapter.addLog("action: $mediaButtonAction")
+            adapter.addLog("key event: $event")
 
             return super.onMediaButtonEvent(mediaButtonIntent)
         }
@@ -82,7 +84,7 @@ class MainActivity : AppCompatActivity() {
         }
         val bluetoothProfileListener = object: BluetoothProfile.ServiceListener{
             override fun onServiceConnected(p0: Int, p1: BluetoothProfile?) {
-                Log.d("ANTON", "onServiceConnected p0:$p0, p1:$p1")
+                adapter.addLog("onServiceConnected p0:$p0, p1:$p1")
 
                 val mediaSession = MediaSession(this@MainActivity, "ANTON")
                 mediaSession.isActive = true
@@ -90,7 +92,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onServiceDisconnected(p0: Int) {
-                Log.d("ANTON", "onServiceDisconnected p0:$p0")
+                adapter.addLog("onServiceDisconnected p0:$p0")
             }
 
         }
@@ -100,6 +102,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun prepareUI(){
         with(viewBinding){
+            /** LOGS RV **/
+            rvLogs.adapter = adapter
+
+            /** LOGS COPY BTN **/
+            btnCopy.setOnClickListener {
+                val logs = adapter.getLogs().joinToString("\n")
+                val clipboardService = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboardService.setPrimaryClip(ClipData.newPlainText("logs", logs))
+                Toast.makeText(this@MainActivity, "Logs copied!", Toast.LENGTH_SHORT).show()
+            }
 
             /**REC**/
             btnRec.setOnClickListener {
@@ -174,7 +186,9 @@ class MainActivity : AppCompatActivity() {
             audioTrack?.write(buffer, 0, offset)
         }
         catch (ex: CancellationException){ }
-        finally { audioTrack?.release() }
+        finally {
+            delay(100)
+            audioTrack?.release() }
     }
 
 
