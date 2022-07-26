@@ -7,20 +7,26 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.*
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
+import android.media.session.MediaSession
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.ResultReceiver
+import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
+import android.view.KeyEvent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.media.session.MediaButtonReceiver
 import com.example.garnituretest.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
 import java.lang.IllegalStateException
@@ -28,9 +34,13 @@ import java.util.concurrent.CancellationException
 
 class MainActivity : AppCompatActivity() {
     private var micPermissionGranted = false
-    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()){ isGranted ->
-        micPermissionGranted = isGranted
+    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()){ _->
+        micPermissionGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
+
     private lateinit var viewBinding: ActivityMainBinding
     private var job: Job? = null
 
@@ -42,6 +52,17 @@ class MainActivity : AppCompatActivity() {
     private var audioTrack: AudioTrack? = null
     private val audioManager: AudioManager by lazy{ getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
+    private val mediaSessionCallback: MediaSession.Callback = object: MediaSession.Callback() {
+        override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+
+            val mediaButtonAction = mediaButtonIntent.action
+            val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            Log.d("ANTON", "action: $mediaButtonAction")
+            Log.d("ANTON", "key event: $event")
+
+            return super.onMediaButtonEvent(mediaButtonIntent)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,8 +74,27 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
 
-
         prepareUI()
+
+        createAudioTrack().apply {
+            play()
+            release()
+        }
+        val bluetoothProfileListener = object: BluetoothProfile.ServiceListener{
+            override fun onServiceConnected(p0: Int, p1: BluetoothProfile?) {
+                Log.d("ANTON", "onServiceConnected p0:$p0, p1:$p1")
+
+                val mediaSession = MediaSession(this@MainActivity, "ANTON")
+                mediaSession.isActive = true
+                mediaSession.setCallback(mediaSessionCallback)
+            }
+
+            override fun onServiceDisconnected(p0: Int) {
+                Log.d("ANTON", "onServiceDisconnected p0:$p0")
+            }
+
+        }
+        BluetoothAdapter.getDefaultAdapter().getProfileProxy(this, bluetoothProfileListener, BluetoothProfile.A2DP)
     }
 
 
@@ -168,5 +208,11 @@ class MainActivity : AppCompatActivity() {
             minBufferSize * 10,
             AudioTrack.MODE_STREAM,
             0)
+    }
+
+    class MyCallBack(): MediaSessionCompat.Callback(){
+        override fun onCustomAction(action: String?, extras: Bundle?) {
+            super.onCustomAction(action, extras)
+        }
     }
 }
