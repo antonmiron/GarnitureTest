@@ -77,8 +77,6 @@ class MainActivity : AppCompatActivity() {
             adapter.addLog("onCommand args: $args")
             adapter.addLog("onCommand cb: $cb")
         }
-
-
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,17 +95,20 @@ class MainActivity : AppCompatActivity() {
             play()
             release()
         }
+
+        var mediaSession: MediaSession? = null
         val bluetoothProfileListener = object: BluetoothProfile.ServiceListener{
             override fun onServiceConnected(p0: Int, p1: BluetoothProfile?) {
                 adapter.addLog("onServiceConnected p0:$p0, p1:$p1")
 
-                val mediaSession = MediaSession(this@MainActivity, "ANTON")
-                mediaSession.isActive = true
-                mediaSession.setCallback(mediaSessionCallback)
+                mediaSession = MediaSession(this@MainActivity, "ANTON")
+                mediaSession?.isActive = true
+                mediaSession?.setCallback(mediaSessionCallback)
             }
 
             override fun onServiceDisconnected(p0: Int) {
                 adapter.addLog("onServiceDisconnected p0:$p0")
+                mediaSession?.release()
             }
 
         }
@@ -237,11 +238,5 @@ class MainActivity : AppCompatActivity() {
             minBufferSize * 10,
             AudioTrack.MODE_STREAM,
             0)
-    }
-
-    class MyCallBack(): MediaSessionCompat.Callback(){
-        override fun onCustomAction(action: String?, extras: Bundle?) {
-            super.onCustomAction(action, extras)
-        }
     }
 }
