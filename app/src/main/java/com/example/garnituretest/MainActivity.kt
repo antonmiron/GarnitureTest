@@ -59,11 +59,26 @@ class MainActivity : AppCompatActivity() {
             val mediaButtonAction = mediaButtonIntent.action
             val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
 
-            adapter.addLog("action: $mediaButtonAction")
-            adapter.addLog("key event: $event")
+            adapter.addLog("onMediaButton action: $mediaButtonAction")
+            adapter.addLog("onMediaButton key event: $event")
 
             return super.onMediaButtonEvent(mediaButtonIntent)
         }
+
+        override fun onCustomAction(action: String, extras: Bundle?) {
+            super.onCustomAction(action, extras)
+            adapter.addLog("onCustomAction action: $action")
+            adapter.addLog("onCustomAction extras: $extras")
+        }
+
+        override fun onCommand(command: String, args: Bundle?, cb: ResultReceiver?) {
+            super.onCommand(command, args, cb)
+            adapter.addLog("onCommand command: $command")
+            adapter.addLog("onCommand args: $args")
+            adapter.addLog("onCommand cb: $cb")
+        }
+
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
