@@ -2,10 +2,7 @@ package com.example.garnituretest
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothProfile
+import android.bluetooth.*
 import android.content.*
 import android.content.pm.PackageManager
 import android.media.*
@@ -23,21 +20,35 @@ import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media.session.MediaButtonReceiver
 import com.example.garnituretest.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
 import java.lang.IllegalStateException
+import java.util.*
 import java.util.concurrent.CancellationException
 
 class MainActivity : AppCompatActivity() {
     private var micPermissionGranted = false
+    private var bluetoothPermissionGranted = false
+
+    @SuppressLint("MissingPermission")
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()){ _->
         micPermissionGranted = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
+
+        bluetoothPermissionGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.BLUETOOTH_CONNECT,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if(bluetoothPermissionGranted){
+            startBluetoothAdapter()
+        }
     }
 
     private lateinit var viewBinding: ActivityMainBinding
@@ -53,31 +64,8 @@ class MainActivity : AppCompatActivity() {
 
     private val adapter = Adapter()
 
-    private val mediaSessionCallback: MediaSession.Callback = object: MediaSession.Callback() {
-        override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+    private var socket: BluetoothSocket? = null
 
-            val mediaButtonAction = mediaButtonIntent.action
-            val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-
-            adapter.addLog("onMediaButton action: $mediaButtonAction")
-            adapter.addLog("onMediaButton key event: $event")
-
-            return super.onMediaButtonEvent(mediaButtonIntent)
-        }
-
-        override fun onCustomAction(action: String, extras: Bundle?) {
-            super.onCustomAction(action, extras)
-            adapter.addLog("onCustomAction action: $action")
-            adapter.addLog("onCustomAction extras: $extras")
-        }
-
-        override fun onCommand(command: String, args: Bundle?, cb: ResultReceiver?) {
-            super.onCommand(command, args, cb)
-            adapter.addLog("onCommand command: $command")
-            adapter.addLog("onCommand args: $args")
-            adapter.addLog("onCommand cb: $cb")
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,6 +77,11 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
 
+        bluetoothPermissionGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.BLUETOOTH_CONNECT,
+        ) == PackageManager.PERMISSION_GRANTED
+
         prepareUI()
 
         createAudioTrack().apply {
@@ -96,23 +89,18 @@ class MainActivity : AppCompatActivity() {
             release()
         }
 
-        var mediaSession: MediaSession? = null
-        val bluetoothProfileListener = object: BluetoothProfile.ServiceListener{
-            override fun onServiceConnected(p0: Int, p1: BluetoothProfile?) {
-                adapter.addLog("onServiceConnected p0:$p0, p1:$p1")
-
-                mediaSession = MediaSession(this@MainActivity, "ANTON")
-                mediaSession?.isActive = true
-                mediaSession?.setCallback(mediaSessionCallback)
-            }
-
-            override fun onServiceDisconnected(p0: Int) {
-                adapter.addLog("onServiceDisconnected p0:$p0")
-                mediaSession?.release()
-            }
-
+        try{
+            startBluetoothAdapter()
+        } catch (ex: SecurityException){
+            /**
+             * сделал через exception потому что для устройств до 11 андроида и target api 30 включительно запрашивать пермишен не нужно
+             * достаточно просто выставить в манифесте android.permission.BLUETOOTH.
+             * для апи 31+ нужен уже android.permission.BLUETOOTH_CONNECT и запрос на использование
+             *
+             * я в душе не чаю что там за девайс потому запускаю "в лоб", если свалится по причине того что пермишен не выыдан - запрошу
+             * **/
+            requestPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
-        BluetoothAdapter.getDefaultAdapter().getProfileProxy(this, bluetoothProfileListener, BluetoothProfile.A2DP)
     }
 
 
@@ -176,7 +164,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun startBluetoothAdapter(){
 
+        /**
+         * Да деприкейтет и правльно делать вот так:
+         * val bluetoothManager = this.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+         * bluetoothManager.getAdapter()
+         *
+         * но пока для простоты, пофиг)
+         * **/
+        BluetoothAdapter.getDefaultAdapter().bondedDevices.forEach{ device ->
+            adapter.addLog("device name: ${device.name}, type: ${device.type}, boundState: ${device.bondState}, bluetoothClass: ${device.bluetoothClass}, uuids: ${device.uuids}")
+            if(device.name.startsWith("otto",true)){
+                var readJob: Job? = null
+                try {
+                    /**
+                     * Этот UUID "00001101-0000-1000-8000-00805F9B34FB" взят не с потолка
+                     * это дефолтный UUID для SPP (serial port profile): https://developer.android.com/reference/android/bluetooth/BluetoothDevice#createRfcommSocketToServiceRecord(java.util.UUID)
+                     * **/
+                    socket = device.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"))
+                    readJob = lifecycleScope.launch(Dispatchers.Default) {
+                        try {
+                            socket?.connect()
+                            val inputStream = socket?.inputStream
+                            val byteArray = ByteArray(512)
+
+                            withContext(Dispatchers.Main){
+                                adapter.addLog("inside coroutine: isActive:$isActive, socket?.isConnected == ${socket?.isConnected == true}")
+                            }
+
+                            while(isActive && socket?.isConnected == true){
+                                inputStream?.read(byteArray)
+                                withContext(Dispatchers.Main){
+                                    adapter.addLog("bytes: ${byteArray.joinToString()}")
+                                }
+                            }
+                        } catch (ex: Exception){
+                            Log.e("ANTON", ex.stackTraceToString())
+                            withContext(Dispatchers.Main) {
+                                adapter.addLog("exception in coroutine: ${ex.stackTraceToString()}")
+                            }
+                        }
+                    }
+                } catch (ex: Exception){
+                    readJob?.cancel()
+                    Log.e("ANTON", ex.stackTraceToString())
+                    adapter.addLog("exception: ${ex.stackTraceToString()}")
+                    return
+                }
+                return
+            }
+        }
+    }
 
     private suspend fun recAudio() = withContext(Dispatchers.IO){
         try {
