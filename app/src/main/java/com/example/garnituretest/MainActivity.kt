@@ -9,15 +9,11 @@ import android.bluetooth.BluetoothProfile
 import android.content.*
 import android.content.pm.PackageManager
 import android.media.*
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.AutomaticGainControl
-import android.media.audiofx.NoiseSuppressor
 import android.media.session.MediaSession
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.ResultReceiver
-import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import android.view.KeyEvent
 import android.widget.Toast
@@ -25,7 +21,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.media.session.MediaButtonReceiver
 import com.example.garnituretest.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
 import java.lang.IllegalStateException
@@ -77,6 +72,11 @@ class MainActivity : AppCompatActivity() {
             adapter.addLog("onCommand args: $args")
             adapter.addLog("onCommand cb: $cb")
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        adapter.addLog("dispatchKeyEvent event: $event")
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
