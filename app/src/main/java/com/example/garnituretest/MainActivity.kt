@@ -13,23 +13,31 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.media.session.MediaSession
+import android.net.Uri
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.ResultReceiver
-import android.support.v4.media.session.MediaSessionCompat
+import android.provider.MediaStore
 import android.util.Log
 import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContentProviderCompat.requireContext
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
-import androidx.media.session.MediaButtonReceiver
 import com.example.garnituretest.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
+import java.io.BufferedInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.io.OutputStream
 import java.lang.IllegalStateException
 import java.util.concurrent.CancellationException
+import kotlin.math.max
+import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
     private var micPermissionGranted = false
@@ -38,6 +46,13 @@ class MainActivity : AppCompatActivity() {
             this,
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private val createFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()){ uri ->
+        job?.cancel()
+        job = lifecycleScope.launch{
+            playAudio(uri, viewBinding.editTextNumber.text.toString().toShortOrNull()?:1)
+        }
     }
 
     private lateinit var viewBinding: ActivityMainBinding
@@ -112,7 +127,7 @@ class MainActivity : AppCompatActivity() {
             }
 
         }
-        BluetoothAdapter.getDefaultAdapter().getProfileProxy(this, bluetoothProfileListener, BluetoothProfile.A2DP)
+//        BluetoothAdapter.getDefaultAdapter().getProfileProxy(this, bluetoothProfileListener, BluetoothProfile.A2DP)
     }
 
 
@@ -168,9 +183,10 @@ class MainActivity : AppCompatActivity() {
             btnPlay.setOnClickListener {
                 job?.cancel()
                 job = lifecycleScope.launch {
-                    tvStatus.text = "PLAY"
-                    playAudio()
-                    tvStatus.text = "STOP"
+//                    viewBinding.tvStatus.text = "PLAY"
+//                    playAudio()
+//                    viewBinding.tvStatus.text = "STOP"
+                    createFileLauncher.launch(null)
                 }
             }
         }
@@ -187,26 +203,64 @@ class MainActivity : AppCompatActivity() {
 
             offset = 0
             while (isActive && offset < buffer.size) {
-                offset += audioRecord?.read(buffer, offset, 160)?:0
+                offset+= audioRecord?.read(buffer, offset, 160)?:0
             }
+
         }
         catch (ex: CancellationException){ }
         finally { audioRecord?.release() }
     }
 
-    private suspend fun playAudio() = withContext(Dispatchers.IO){
+    private suspend fun playAudio(uri:Uri, gainCoefficient: Short) = withContext(Dispatchers.IO){
+        val inputStream = resources.openRawResource(R.raw.source)
+        val outputStream = getOutputForFile(uri)
+
         try {
             audioTrack = createAudioTrack()
             Log.d("ANTON", "audioTrack: $audioTrack")
+
+            for(i in 0 until offset){
+                val old = buffer[i]
+                buffer[i] = min(old * gainCoefficient, Short.MAX_VALUE.toInt()).toShort()
+                val new = buffer[i]
+                if(i<10) Log.d("ANTON","old: $old, new: $new")
+            }
+
+            val wave = Wave(8000, 1, buffer, 0, offset)
+            val result = wave.wroteToFile(outputStream)
+            Log.d("ANTON", "result: $result")
+
             audioTrack?.play()
-            audioTrack?.write(buffer, 0, offset)
+            audioTrack?.write(buffer, 0, buffer.size)
+
+//            val byteArray = ByteArray(630000)
+//            val offset = inputStream.read(byteArray)
+//            val shortArray = ShortArray(byteArray.size / 2) {
+//                (byteArray[it * 2].toUByte().toInt() + (byteArray[(it * 2) + 1].toInt() shl 8)).toShort()
+//            }.onEach {
+//                 it*gainCoefficient
+//            }
+//            val wave = Wave(8000, 1, shortArray, 0, offset)
+//            val result = wave.wroteToFile(outputStream)
+//            Log.d("ANTON", "result: $result")
+
         }
         catch (ex: CancellationException){ }
         finally {
-            delay(100)
-            audioTrack?.release() }
+            delay(1000)
+            audioTrack?.release()
+            outputStream?.close()
+        }
     }
 
+    private suspend fun getOutputForFile(uri: Uri):OutputStream? {
+        val dir = DocumentFile.fromTreeUri(this, uri)
+        val file = dir?.createFile("audio/x-wav", "qwe.wav")?:return null
+        return contentResolver.openOutputStream(file.uri)
+    }
+    fun toBytes(s: Short): ByteArray {
+        return byteArrayOf((s.toInt() and 0x00FF).toByte(), ((s.toInt() and 0xFF00) shr (8)).toByte())
+    }
 
 
 
