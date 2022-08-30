@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.media.*
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.LoudnessEnhancer
+import android.net.Uri
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -18,8 +19,12 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.garnituretest.databinding.ActivityMainBinding
+import com.google.android.material.slider.Slider
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
+import java.io.BufferedInputStream
+import java.io.File
+import java.io.InputStream
 import java.lang.Math.log10
 
 class MainActivity : AppCompatActivity() {
@@ -27,14 +32,15 @@ class MainActivity : AppCompatActivity() {
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()){ isGranted ->
         micPermissionGranted = isGranted
     }
+    private val pickSoundLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()){ uri ->
+        Log.d("ANTON", "uri: $uri")
+        pickSound(uri)
+    }
     private lateinit var viewBinding: ActivityMainBinding
     private var job: Job? = null
 
-    private val buffer = ShortArray(636630)
-    private var offset = 0
-
+    private var soundUri: Uri? = null
     private val minBufferSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-    private var audioRecord: AudioRecord? = null
     private val audioTrack = createAudioTrack()
     val le = LoudnessEnhancer(audioTrack.audioSessionId).apply { enabled = true }
 
@@ -60,24 +66,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun prepareUI(){
         with(viewBinding){
-            /**REC**/
-            btnRec.setOnClickListener {
+            /**PICK SOUND**/
+            btnPickSound.setOnClickListener {
                 job?.cancel()
-
-                if(!micPermissionGranted){
-                    requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    return@setOnClickListener
-                }
-
-                job = lifecycleScope.launch {
-                    tvStatus.text = "REC"
-                    recAudio()
-                }
+                pickSoundLauncher.launch(arrayOf("audio/x-wav"))
             }
 
             /**STOP**/
             btnStop.setOnClickListener {
-                audioRecord?.stop()
                 audioTrack.stop()
 
                 job?.cancel()
@@ -90,60 +86,66 @@ class MainActivity : AppCompatActivity() {
             btnPlay.setOnClickListener {
                 job?.cancel()
                 job = lifecycleScope.launch {
-                    tvStatus.text = "PLAY"
-                    playChangedAudio()
-//                    playAudio()
+                    soundUri?.let {
+                        tvStatus.text = "PLAY"
+                        playAudio(contentResolver.openInputStream(it))
+                    }
                     tvStatus.text = "STOP"
+
                 }
             }
 
             /**Change volume**/
-            seekBar.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(
-                    seekBar: SeekBar?,
-                    progress: Int,
-                    fromUser: Boolean
-                ) {
-//                    var p = (progress+1)/5.0f
-//                    if(p<=0.4) p = 0.01f
-                    var p = progress*2000
-                    Log.d("ANTON", "progress: $progress, p: $p")
-                    le.setTargetGain(p)
-
-
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            seekBar.addOnChangeListener(Slider.OnChangeListener { _, value, _ ->
+                val gainCoefficient = getGainCoefficientForIncomingCall(value)
+                le.setTargetGain(gainCoefficient)
             })
         }
     }
 
 
 
-    private suspend fun recAudio() = withContext(Dispatchers.IO){
-        audioRecord = createAudioRecord()
 
-        audioRecord?.startRecording()
 
-        offset = 0
+    private suspend fun playAudio(inputStream: InputStream?) = withContext(Dispatchers.IO){
+        inputStream?:return@withContext
 
-        while (isActive && offset < buffer.size) {
-            offset += audioRecord?.read(buffer, offset, 160)?:0
+        val buffer = ByteArray(minBufferSize)
+        audioTrack.play()
+        do{
+            val offset = inputStream.read(buffer)
+            audioTrack.write(buffer, 0, offset)
+        }while (offset > 0)
+    }
+
+
+    private fun pickSound(uri: Uri){
+        soundUri = uri
+        tvStatus.text = File(uri.path?:"Unknown").name
+    }
+
+    /**
+     * Convert settings value (from -15 to 15) to millibel (1 decibel == 100 millibel)
+     * Setting`s value 0 equals 0 dB, corresponds to no amplification
+     *
+     * @return millibel for using in [LoudnessEnhancer.setTargetGain]
+     * **/
+    private fun getGainCoefficientForIncomingCall(settingsValue: Float?): Int{
+        return when(settingsValue){
+            15f -> 1500
+            12f -> 1200
+            9f -> 900
+            6f -> 600
+            3f -> 300
+            0f -> 0
+            -3f -> -300
+            -6f -> -600
+            -9f -> -900
+            -12f -> -1200
+            -15f -> -1500
+
+            else -> 0
         }
-    }
-
-    private suspend fun playAudio() = withContext(Dispatchers.IO){
-        Log.d("ANTON", "playAudio max amplitude: ${buffer.maxOrNull()}")
-
-        audioTrack.play()
-        audioTrack.write(buffer, 0, offset)
-    }
-
-    private suspend fun playChangedAudio() = withContext(Dispatchers.IO){
-
-        audioTrack.play()
-        audioTrack.write(buffer, 0, offset)
     }
 
 
@@ -152,13 +154,8 @@ class MainActivity : AppCompatActivity() {
     private fun createAudioRecord(): AudioRecord{
         val minBufferSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
 
-        val source = if(switchAudio.isChecked) MediaRecorder.AudioSource.VOICE_COMMUNICATION
-        else MediaRecorder.AudioSource.MIC
-
-        Log.d("ANTON", "source: $source")
-
         return AudioRecord(
-            source,
+            MediaRecorder.AudioSource.MIC,
             8000,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,

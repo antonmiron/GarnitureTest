@@ -14,13 +14,13 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/btnRec"/>
+        app:layout_constraintBottom_toTopOf="@id/btnPickSound"/>
 
     <Button
-        android:id="@+id/btnRec"
+        android:id="@+id/btnPickSound"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="REC"
+        android:text="PICK SOUND"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
@@ -33,7 +33,7 @@
         android:text="STOP"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toRightOf="@id/btnRec"
+        app:layout_constraintLeft_toRightOf="@id/btnPickSound"
         app:layout_constraintRight_toLeftOf="@id/btnPlay"/>
 
     <Button
@@ -46,28 +46,39 @@
         app:layout_constraintLeft_toRightOf="@id/btnStop"
         app:layout_constraintRight_toRightOf="parent"/>
 
-    <SeekBar
+    <com.google.android.material.slider.Slider
         android:id="@+id/seekBar"
         style="@style/Widget.AppCompat.SeekBar.Discrete"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:max="4"
-        android:progress="2"
+        android:valueFrom="-15"
+        android:valueTo="15"
+        android:stepSize="3"
+        android:value="0"
         android:layout_marginTop="36dp"
         app:layout_constraintTop_toBottomOf="@id/btnStop"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        tools:layout_editor_absoluteY="470dp" />
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"/>
 
-    <Switch
-        android:id="@+id/switchAudio"
+    <TextView
+        android:id="@+id/tvValueFrom"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Use noise reduction"
-        android:layout_marginTop="36dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/seekBar" />
+        android:text="-15 dB"
+        android:layout_margin="8dp"
+        app:layout_constraintTop_toBottomOf="@id/seekBar"
+        app:layout_constraintLeft_toLeftOf="parent"
+        />
+
+    <TextView
+        android:id="@+id/tvValueTo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="15 dB"
+        android:layout_margin="8dp"
+        app:layout_constraintTop_toBottomOf="@id/seekBar"
+        app:layout_constraintRight_toRightOf="parent"
+        />
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>
